@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendario Generativo - Blending Locale</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      background: #000;
+      color: #fff;
+      font-family: "Inter", sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      background: #000;
+      border: 2px solid #333;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 500px;
+      height: auto;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    input[type="date"], button {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+    }
+
+    input[type="date"] {
+      background: #222;
+      color: #fff;
+    }
+
+    button {
+      background: #444;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #666;
+    }
+
+    @media (min-width: 768px) {
+      h1 { font-size: 2rem; }
+      button, input[type="date"] { font-size: 1.1rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>✨ Genera il tuo cerchio personale ✨</h1>
+
+  <div class="controls">
+    <input type="date" id="birthdate" />
+    <button id="generate">Genera</button>
+    <button id="download">📥 Scarica immagine</button>
+  </div>
+
+  <canvas id="canvas" width="800" height="800"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const imagePaths = Array.from({ length: 12 }, (_, i) => `img/img${i + 1}.png`);
+    const blendModes = ["screen", "overlay", "soft-light"];
+    let images = [];
+
+    // 🎲 Funzioni deterministiche
+    function stringToSeed(str) {
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+      return Math.abs(h);
+    }
+    function seededRandom(seed) {
+      let v = seed % 2147483647; if (v <= 0) v += 2147483646;
+      return function() { v = v * 16807 % 2147483647; return (v - 1) / 2147483646; };
+    }
+    function deterministicOpacity(rand) {
+      const min = 90, max = 100;
+      const val = Math.floor(rand() * (max - min + 1)) + min;
+      return val / 100;
+    }
+    function pickOverlayIndex(baseIndex, rand) {
+      let idx;
+      do { idx = Math.floor(rand() * images.length); }
+      while (idx === baseIndex || idx === 0);
+      return idx;
+    }
+
+    // 🧪 Fusione immagini
+    function fuseImagesLocally(baseImg, overlayImg, baseOpacity, overlayOpacity, blendMode) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = baseOpacity;
+      ctx.drawImage(baseImg, 0, 0, canvas.width, canvas.height);
+
+      ctx.globalCompositeOperation = blendMode;
+      ctx.globalAlpha = overlayOpacity;
+      ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+    }
+
+    // 🧠 Genera immagine deterministica
+    function generateCircle(date) {
+      const day = date.getDate();
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      const seed = stringToSeed(`${day}-${month}-${year}`);
+      const rand = seededRandom(seed);
+
+      let baseIndex = month - 1;
+      let overlayIndex = pickOverlayIndex(baseIndex, rand);
+
+      const baseOpacity = deterministicOpacity(rand);
+      const overlayOpacity = deterministicOpacity(rand);
+      const blendMode = blendModes[Math.floor(rand() * blendModes.length)];
+
+      // 50% di swap (ma mai se overlay = img1)
+      const doSwap = rand() < 0.5;
+      let swapped = false;
+      if (doSwap && baseIndex !== 0 && overlayIndex !== 0) {
+        [baseIndex, overlayIndex] = [overlayIndex, baseIndex];
+        swapped = true;
+      }
+
+      console.clear();
+      console.log("🎨 Parametri generazione cerchio");
+      console.log("-------------------------------");
+      console.log("📅 Data:", date.toLocaleDateString());
+      console.log("🔑 Seed:", seed, "| Swap ruoli:", swapped ? "SÌ" : "NO");
+      console.log("🖼️ Base:", imagePaths[baseIndex], `Opacità base: ${Math.round(baseOpacity*100)}%`);
+      console.log("🖼️ Overlay:", imagePaths[overlayIndex], `Opacità overlay: ${Math.round(overlayOpacity*100)}%`);
+      console.log("✨ Blend mode:", blendMode);
+
+      fuseImagesLocally(images[baseIndex], images[overlayIndex], baseOpacity, overlayOpacity, blendMode);
+    }
+
+    // 🖼️ Precarica immagini
+    function preloadImages(paths) {
+      return Promise.all(paths.map(path => new Promise(resolve => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = path;
+        img.onload = () => resolve(img);
+      })));
+    }
+
+    // 📱 Adatta canvas a schermo
+    function resizeCanvas() {
+      const maxSize = Math.min(window.innerWidth * 0.9, 500);
+      canvas.style.width = `${maxSize}px`;
+    }
+
+    // 🖱️ Eventi
+    document.getElementById('generate').addEventListener('click', () => {
+      const v = document.getElementById('birthdate').value;
+      if (!v) return alert("Inserisci una data!");
+      generateCircle(new Date(v));
+    });
+
+    document.getElementById('download').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.download = 'cerchio_personale.png';
+      a.href = canvas.toDataURL();
+      a.click();
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // 🚀 Boot
+    preloadImages(imagePaths).then(loaded => {
+      images = loaded;
+      console.log("✅ Immagini caricate:", images.length);
+      resizeCanvas();
+    });
+  </script>
+</body>
+</html>
