@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendario Generativo - Blending Locale</title>
+  <title>UTE - Calendar 2026</title>
   <style>
     * { box-sizing: border-box; }
 
     body {
       background: #000;
       color: #fff;
-      font-family: "Inter", sans-serif;
+      font-family: "Alt_mono", monospace;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -75,7 +75,7 @@
 </head>
 <body>
 
-  <h1>✨ Genera il tuo cerchio personale ✨</h1>
+  <h1>Genera il tuo cerchio personale</h1>
 
   <div class="controls">
     <input type="date" id="birthdate" />
@@ -88,6 +88,7 @@
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+
     const imagePaths = Array.from({ length: 12 }, (_, i) => `img/img${i + 1}.png`);
     const blendModes = ["screen", "overlay", "soft-light"];
     let images = [];
@@ -98,20 +99,32 @@
       for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
       return Math.abs(h);
     }
+
     function seededRandom(seed) {
       let v = seed % 2147483647; if (v <= 0) v += 2147483646;
       return function() { v = v * 16807 % 2147483647; return (v - 1) / 2147483646; };
     }
+
     function deterministicOpacity(rand) {
       const min = 90, max = 100;
       const val = Math.floor(rand() * (max - min + 1)) + min;
       return val / 100;
     }
+
     function pickOverlayIndex(baseIndex, rand) {
       let idx;
       do { idx = Math.floor(rand() * images.length); }
-      while (idx === baseIndex || idx === 0);
+      while (idx === baseIndex || idx === 0); // niente overlay = base o img1
       return idx;
+    }
+
+    // Regola blend mode speciale per overlay = img2 o img4
+    function pickBlendMode(overlayIndex, rand) {
+      if (overlayIndex === 1 || overlayIndex === 6 || overlayIndex === 11) { // img2 o img4
+        return "screen";
+      } else {
+        return blendModes[Math.floor(rand() * blendModes.length)];
+      }
     }
 
     // 🧪 Fusione immagini
@@ -143,13 +156,15 @@
 
       const baseOpacity = deterministicOpacity(rand);
       const overlayOpacity = deterministicOpacity(rand);
-      const blendMode = blendModes[Math.floor(rand() * blendModes.length)];
+      let blendMode = pickBlendMode(overlayIndex, rand);
 
-      // 50% di swap (ma mai se overlay = img1)
+      // 🔁 Swap deterministico
       const doSwap = rand() < 0.5;
       let swapped = false;
       if (doSwap && baseIndex !== 0 && overlayIndex !== 0) {
         [baseIndex, overlayIndex] = [overlayIndex, baseIndex];
+        // ricalcola blend mode in base al nuovo overlay
+        blendMode = pickBlendMode(overlayIndex, rand);
         swapped = true;
       }
 
@@ -175,7 +190,7 @@
       })));
     }
 
-    // 📱 Adatta canvas a schermo
+    // 📱 Adatta canvas allo schermo
     function resizeCanvas() {
       const maxSize = Math.min(window.innerWidth * 0.9, 500);
       canvas.style.width = `${maxSize}px`;
